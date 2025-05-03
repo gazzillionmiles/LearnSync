@@ -4,8 +4,8 @@ import { Feedback } from '../../shared/types';
 // Base URL for Hugging Face Inference API
 const HF_API_URL = 'https://api-inference.huggingface.co/models';
 
-// Default model - a good general-purpose instruction-following model
-const DEFAULT_MODEL = 'mistralai/Mistral-7B-Instruct-v0.2';
+// Default model - using a more accessible model that works with free API keys
+const DEFAULT_MODEL = 'google/flan-t5-small';
 
 export async function evaluatePromptWithAI(
   userPrompt: string,
@@ -40,8 +40,7 @@ Evaluate this prompt and provide a score (1-10) and 2-3 specific suggestions for
     const response = await axios.post(
       `${HF_API_URL}/${DEFAULT_MODEL}`,
       {
-        inputs: `<s>[INST] ${systemPrompt} [/INST]</s>
-<s>[INST] ${userMessage} [/INST]</s>`,
+        inputs: `Evaluate prompt engineering: ${systemPrompt}\n\n${userMessage}`,
         parameters: {
           max_new_tokens: 500,
           temperature: 0.7,
