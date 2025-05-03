@@ -3,6 +3,7 @@ import type { UserProgress, Module, Exercise, Feedback, LeaderboardEntry } from 
 
 // Modules data
 import { modules } from "./data/modules";
+import { evaluatePromptWithAI } from "./services/huggingfaceService";
 
 export interface IStorage {
   // User methods
@@ -122,9 +123,12 @@ export class MemStorage implements IStorage {
     const leaderboard: LeaderboardEntry[] = [];
     
     // Convert user progress to leaderboard entries
-    for (const [userId, progress] of this.progress.entries()) {
+    // Using Array.from to avoid iterator issues with older JavaScript targets
+    Array.from(this.progress.keys()).forEach(async (userId) => {
+      const progress = this.progress.get(userId);
       const user = await this.getUser(userId);
-      if (user) {
+      
+      if (user && progress) {
         leaderboard.push({
           userId: user.id,
           username: user.username,
@@ -132,7 +136,7 @@ export class MemStorage implements IStorage {
           completedExercises: progress.completedExercises.length
         });
       }
-    }
+    });
     
     // Sort by points descending
     return leaderboard.sort((a, b) => b.points - a.points);
@@ -149,54 +153,70 @@ export class MemStorage implements IStorage {
       };
     }
     
-    // Since we can't use external AI APIs, we'll implement a simplified evaluation logic
-    // In a real app, this would call an AI API for evaluation
-    
-    // Simple evaluation based on prompt length and keyword matching
-    const promptLength = userPrompt.length;
-    const hasProblemKeywords = checkKeywordMatch(userPrompt, exercise.problem);
-    const hasExamplePattern = checkPatternMatch(userPrompt, exercise.example);
-    
-    let score = 0;
-    const suggestions: string[] = [];
-    
-    // Basic length check
-    if (promptLength < 20) {
-      score = 3;
-      suggestions.push("Your prompt is too short. Consider adding more specific instructions.");
-    } else if (promptLength < 50) {
-      score = 5;
-      suggestions.push("Your prompt could be more detailed to get better results.");
-    } else {
-      score = 7;
+    try {
+      // Use AI-powered evaluation with Hugging Face
+      console.log(`Evaluating prompt with AI for module: ${moduleId}, exercise: ${exerciseId}`);
+      return await evaluatePromptWithAI(
+        userPrompt,
+        exercise.problem,
+        exercise.example,
+        exercise.modelAnswer
+      );
+    } catch (error) {
+      console.error("Error during AI evaluation:", error);
+      
+      // Fallback to simple evaluation if AI fails
+      console.log("Falling back to simple evaluation method");
+      
+      // Simple evaluation based on prompt length and keyword matching
+      const promptLength = userPrompt.length;
+      const hasProblemKeywords = checkKeywordMatch(userPrompt, exercise.problem);
+      const hasExamplePattern = checkPatternMatch(userPrompt, exercise.example);
+      
+      let score = 0;
+      const suggestions: string[] = [];
+      
+      // Basic length check
+      if (promptLength < 20) {
+        score = 3;
+        suggestions.push("Your prompt is too short. Consider adding more specific instructions.");
+      } else if (promptLength < 50) {
+        score = 5;
+        suggestions.push("Your prompt could be more detailed to get better results.");
+      } else {
+        score = 7;
+      }
+      
+      // Keyword matching improves score
+      if (hasProblemKeywords) {
+        score += 1;
+      } else {
+        suggestions.push("Try including more specific terms related to the exercise problem.");
+      }
+      
+      // Pattern matching from example improves score
+      if (hasExamplePattern) {
+        score += 2;
+      } else {
+        suggestions.push("Your prompt could benefit from following the pattern shown in the example.");
+      }
+      
+      // Cap score at 10
+      score = Math.min(score, 10);
+      
+      // For high scores, add positive feedback
+      if (score >= 8) {
+        suggestions.push("Great job! Your prompt is clear and well-structured.");
+      }
+      
+      // Add note about fallback mode
+      suggestions.push("Note: Using simplified evaluation due to AI service unavailability.");
+      
+      return {
+        score,
+        suggestions
+      };
     }
-    
-    // Keyword matching improves score
-    if (hasProblemKeywords) {
-      score += 1;
-    } else {
-      suggestions.push("Try including more specific terms related to the exercise problem.");
-    }
-    
-    // Pattern matching from example improves score
-    if (hasExamplePattern) {
-      score += 2;
-    } else {
-      suggestions.push("Your prompt could benefit from following the pattern shown in the example.");
-    }
-    
-    // Cap score at 10
-    score = Math.min(score, 10);
-    
-    // For high scores, add positive feedback
-    if (score >= 8) {
-      suggestions.push("Great job! Your prompt is clear and well-structured.");
-    }
-    
-    return {
-      score,
-      suggestions
-    };
   }
 }
 

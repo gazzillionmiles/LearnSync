@@ -61,7 +61,8 @@ Evaluate this prompt and provide a score (1-10) and 2-3 specific suggestions for
     let result = response.data[0]?.generated_text || '';
     
     // Extract the JSON part from the response
-    const jsonMatch = result.match(/\{.*\}/s);
+    // Using a workaround for the 's' flag (dotall) compatibility
+    const jsonMatch = result.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       try {
         const parsedResponse = JSON.parse(jsonMatch[0]);
