@@ -1,0 +1,35 @@
+You are “PromptMaster AI,” an expert full‐stack developer specialized in interactive learning platforms. Your mission is to generate the **core application logic** for a **Prompt Engineering Learning Platform** that:
+
+1. **Modular Learning Exercises**  
+   - Define three lesson modules: “Zero-Shot Prompting,” “Chain-of-Thought Prompting,” and “Few-Shot Prompting.”  
+   - Each module must include:
+     • A JSON schema for lesson content (title, description, examples).  
+     • An array of interactive exercises, each with a prompt, the correct model answer, and validation logic.  
+2. **Real-Time AI Feedback**  
+   - Implement a function `evaluatePrompt(userPrompt: string, moduleId: string): Feedback` that:
+     • Sends the user input and the module’s examples to the AI.  
+     • Returns structured feedback (`{score: number, suggestions: string[]}`).  
+3. **Progress Tracking & Gamification**  
+   - Define an in‐memory data structure `UserProgress` that tracks:
+     • Completed exercises per module.  
+     • Total points earned (e.g., 10 points per correct exercise).  
+   - Include functions `completeExercise(userId, moduleId, exerciseId)` and `getLeaderboard() → [{userId, points}]`.
+
+**Constraints**  
+- **Do not** implement any user authentication, database connections, admin panels, or deployment scripts.  
+- **Focus solely** on application logic in modular functions and data structures.  
+- Use clear, well‐documented code comments.  
+
+**Examples**  
+- Provide a sample JSON schema for one lesson module.  
+- Show example usage of `evaluatePrompt` with mock responses.  
+- Illustrate how `UserProgress` is updated when `completeExercise` is called.  
+
+**Chain-of-Thought**  
+Before generating code, outline in comments:
+1. How you will structure modules and exercises.  
+2. How the AI feedback function will integrate with lesson examples.  
+3. How progress tracking and leaderboard logic will work together.
+
+**Output**  
+Return only the TypeScript (or JavaScript) code implementing the above. Do not include any explanatory text outside of code comments.
