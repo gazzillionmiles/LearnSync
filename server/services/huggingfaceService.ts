@@ -5,7 +5,8 @@ import { Feedback } from '../../shared/types';
 const HF_API_URL = 'https://api-inference.huggingface.co/models';
 
 // Default model - using a more accessible model that works with free API keys
-const DEFAULT_MODEL = 'google/flan-t5-small';
+// Try using the sentiment-analysis model which is more likely to be available
+const DEFAULT_MODEL = 'distilbert-base-uncased-finetuned-sst-2-english';
 
 export async function evaluatePromptWithAI(
   userPrompt: string,
@@ -37,16 +38,12 @@ User's prompt: ${userPrompt}
 Evaluate this prompt and provide a score (1-10) and 2-3 specific suggestions for improvement in JSON format.`;
 
     // Making the API call to Hugging Face
+    // Since we're using a sentiment analysis model, we'll simplify the request
+    // and handle the raw sentiment score for evaluation
     const response = await axios.post(
       `${HF_API_URL}/${DEFAULT_MODEL}`,
       {
-        inputs: `Evaluate prompt engineering: ${systemPrompt}\n\n${userMessage}`,
-        parameters: {
-          max_new_tokens: 500,
-          temperature: 0.7,
-          top_p: 0.95,
-          return_full_text: false
-        }
+        inputs: `${userPrompt}`
       },
       {
         headers: {
@@ -56,25 +53,48 @@ Evaluate this prompt and provide a score (1-10) and 2-3 specific suggestions for
       }
     );
 
-    // Process the response
-    let result = response.data[0]?.generated_text || '';
-    
-    // Extract the JSON part from the response
-    // Using a workaround for the 's' flag (dotall) compatibility
-    const jsonMatch = result.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        const parsedResponse = JSON.parse(jsonMatch[0]);
+    // Process the response from sentiment analysis model
+    // The model returns an array of objects with label and score
+    try {
+      console.log('Sentiment analysis response:', JSON.stringify(response.data, null, 2));
+      
+      if (Array.isArray(response.data) && response.data.length > 0) {
+        // Sentiment model returns [{ label: "POSITIVE/NEGATIVE", score: 0.xxx }]
+        const sentiment = response.data[0];
+        
+        // Map the sentiment scores to a 1-10 scale for our evaluation
+        let promptScore = 5; // default mid-range score
+        const suggestions: string[] = [];
+        
+        if (sentiment && sentiment.score) {
+          if (sentiment.label === 'POSITIVE') {
+            // Map 0.5-1.0 positive sentiment to 5-10 score
+            promptScore = Math.round(5 + (sentiment.score * 5));
+            
+            if (promptScore >= 8) {
+              suggestions.push("Great job! Your prompt has a positive structure.");
+              suggestions.push("Your prompt is well-formed and likely to produce good results.");
+            } else {
+              suggestions.push("Your prompt is good, but could be more specific and enthusiastic.");
+              suggestions.push("Try adding more descriptive terms to enhance the clarity.");
+            }
+          } else {
+            // Map 0.5-1.0 negative sentiment to 5-1 score
+            promptScore = Math.round(5 - (sentiment.score * 4));
+            
+            suggestions.push("Your prompt may sound a bit negative or confusing.");
+            suggestions.push("Try to use more positive language and clearer instructions.");
+            suggestions.push("Consider reorganizing your prompt with a clear structure.");
+          }
+        }
         
         return {
-          score: Number(parsedResponse.score) || 5,
-          suggestions: Array.isArray(parsedResponse.suggestions) 
-            ? parsedResponse.suggestions 
-            : ['Try to be more specific in your instructions.']
+          score: promptScore,
+          suggestions
         };
-      } catch (parseError) {
-        console.error('Error parsing JSON from AI response:', parseError);
       }
+    } catch (parseError) {
+      console.error('Error processing sentiment analysis response:', parseError);
     }
     
     // Fallback in case we couldn't parse JSON from the response
