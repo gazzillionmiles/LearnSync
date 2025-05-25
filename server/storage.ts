@@ -154,9 +154,13 @@ export class MemStorage implements IStorage {
     }
     
     try {
-      // Use AI-powered evaluation with Hugging Face
-      console.log(`Evaluating prompt with AI for module: ${moduleId}, exercise: ${exerciseId}`);
-      return await evaluatePromptWithAI(
+      // Use AI-powered evaluation with Groq
+      console.log(`Evaluating prompt with Groq for module: ${moduleId}, exercise: ${exerciseId}`);
+      
+      // Import the evaluatePromptWithGroq function
+      const { evaluatePromptWithGroq } = require('./services/groqService');
+      
+      return await evaluatePromptWithGroq(
         userPrompt,
         exercise.problem,
         exercise.example,
