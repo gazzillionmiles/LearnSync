@@ -1,4 +1,3 @@
-
 import { Groq } from 'groq-sdk';
 import { Feedback } from '../../shared/types';
 
@@ -11,6 +10,10 @@ export async function evaluatePromptWithGroq(
   example: string,
   modelAnswer?: string
 ): Promise<Feedback> {
+  if (!process.env.GROQ_API_KEY) {
+    throw new Error('GROQ_API_KEY environment variable is not set');
+  }
+
   try {
     // System prompt to guide the AI on how to evaluate
     const systemPrompt = `You are an expert in prompt engineering evaluation. 
@@ -46,29 +49,30 @@ Evaluate this prompt and provide a score (1-10) and 2-3 specific suggestions for
     const content = response.choices[0].message.content;
     console.log('Groq API response:', content);
     
-    try {
-      // Parse the response JSON
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsedResponse = JSON.parse(jsonMatch[0]);
-        
-        return {
-          score: parsedResponse.score || 5,
-          suggestions: parsedResponse.suggestions || ["Groq API couldn't provide specific suggestions."]
-        };
-      }
-    } catch (parseError) {
-      console.error('Error parsing Groq response:', parseError);
+    if (!content) {
+      throw new Error('Empty response from Groq API');
     }
+
+    // Parse the response JSON
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('Invalid JSON response from Groq API');
+    }
+
+    const parsedResponse = JSON.parse(jsonMatch[0]);
     
-    // Fallback if we couldn't parse JSON from the response
-    return generateFallbackFeedback(userPrompt, problem, example);
+    if (typeof parsedResponse.score !== 'number' || !Array.isArray(parsedResponse.suggestions)) {
+      throw new Error('Invalid feedback format from Groq API');
+    }
+
+    return {
+      score: parsedResponse.score,
+      suggestions: parsedResponse.suggestions
+    };
     
   } catch (error) {
-    console.error('Error calling Groq API:', error);
-    
-    // Fallback to the basic evaluation if the API call fails
-    return generateFallbackFeedback(userPrompt, problem, example);
+    console.error('Error in Groq evaluation:', error);
+    throw error; // Let the caller handle the error
   }
 }
 

@@ -3,7 +3,7 @@ import type { UserProgress, Module, Exercise, Feedback, LeaderboardEntry } from 
 
 // Modules data
 import { modules } from "./data/modules";
-import { evaluatePromptWithAI } from "./services/huggingfaceService";
+import { evaluatePromptWithGroq } from "./services/groqService";
 
 export interface IStorage {
   // User methods
@@ -154,71 +154,32 @@ export class MemStorage implements IStorage {
     }
     
     try {
-      // Use AI-powered evaluation with Groq
+      // Use Groq for evaluation
       console.log(`Evaluating prompt with Groq for module: ${moduleId}, exercise: ${exerciseId}`);
       
-      // Import the evaluatePromptWithGroq function
-      const { evaluatePromptWithGroq } = require('./services/groqService');
-      
-      return await evaluatePromptWithGroq(
+      const feedback = await evaluatePromptWithGroq(
         userPrompt,
         exercise.problem,
         exercise.example,
         exercise.modelAnswer
       );
+
+      if (!feedback) {
+        throw new Error("No feedback received from Groq");
+      }
+
+      return feedback;
     } catch (error) {
-      console.error("Error during AI evaluation:", error);
+      console.error("Error during Groq evaluation:", error);
       
-      // Fallback to simple evaluation if AI fails
-      console.log("Falling back to simple evaluation method");
-      
-      // Simple evaluation based on prompt length and keyword matching
-      const promptLength = userPrompt.length;
-      const hasProblemKeywords = checkKeywordMatch(userPrompt, exercise.problem);
-      const hasExamplePattern = checkPatternMatch(userPrompt, exercise.example);
-      
-      let score = 0;
-      const suggestions: string[] = [];
-      
-      // Basic length check
-      if (promptLength < 20) {
-        score = 3;
-        suggestions.push("Your prompt is too short. Consider adding more specific instructions.");
-      } else if (promptLength < 50) {
-        score = 5;
-        suggestions.push("Your prompt could be more detailed to get better results.");
-      } else {
-        score = 7;
-      }
-      
-      // Keyword matching improves score
-      if (hasProblemKeywords) {
-        score += 1;
-      } else {
-        suggestions.push("Try including more specific terms related to the exercise problem.");
-      }
-      
-      // Pattern matching from example improves score
-      if (hasExamplePattern) {
-        score += 2;
-      } else {
-        suggestions.push("Your prompt could benefit from following the pattern shown in the example.");
-      }
-      
-      // Cap score at 10
-      score = Math.min(score, 10);
-      
-      // For high scores, add positive feedback
-      if (score >= 8) {
-        suggestions.push("Great job! Your prompt is clear and well-structured.");
-      }
-      
-      // Add note about fallback mode
-      suggestions.push("Note: Using simplified evaluation due to AI service unavailability.");
-      
+      // Return a clear error message to the user
       return {
-        score,
-        suggestions
+        score: 0,
+        suggestions: [
+          "Unable to evaluate your prompt at this time.",
+          "Please check your internet connection and try again.",
+          "If the problem persists, contact support."
+        ]
       };
     }
   }
