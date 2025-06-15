@@ -7,7 +7,8 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/Dashboard";
 import ModulePage from "@/pages/ModulePage";
-import Leaderboard from "@/pages/Leaderboard";
+import Leaderboard from './pages/Leaderboard';
+import Lab3D from './pages/Lab3D';
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import Sidebar from "@/components/Sidebar";
@@ -41,7 +42,7 @@ function Router() {
         mobileSidebarOpen={mobileSidebarOpen} 
         setMobileSidebarOpen={setMobileSidebarOpen} 
       />
-      
+
       <main className="flex-1 overflow-y-auto bg-gray-50">
         {/* Mobile Nav Toggle */}
         <div className="bg-primary text-white p-4 md:hidden flex items-center">
@@ -60,6 +61,7 @@ function Router() {
           <Route path="/" component={Dashboard} />
           <Route path="/modules/:moduleId" component={ModulePage} />
           <Route path="/leaderboard" component={Leaderboard} />
+            <Route path="/lab3d" component={Lab3D} />
           <Route component={NotFound} />
         </Switch>
       </main>

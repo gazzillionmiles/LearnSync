@@ -1,4 +1,3 @@
-
 // 3D Scene Types
 export interface ThreeDScene {
   id: string;
@@ -172,4 +171,84 @@ export interface PromptMetrics {
   averageScore: number;
   mostUsedKeywords: { word: string; count: number }[];
   averageResponseTime: number;
+}
+
+export interface ExerciseSubmission {
+  id: number;
+  userId: number;
+  moduleId: string;
+  exerciseId: string;
+  userPrompt: string;
+  score?: number;
+  feedback?: string;
+  suggestions?: string;
+  submittedAt: Date;
+}
+
+export interface Scene3D {
+  id: number;
+  userId: number;
+  title: string;
+  prompt: string;
+  sceneConfig: {
+    geometry: 'box' | 'sphere' | 'cylinder' | 'cone' | 'torus' | 'plane';
+    color: string;
+    position: [number, number, number];
+    rotation: [number, number, number];
+    scale: [number, number, number];
+    lighting: {
+      ambient: string;
+      directional: string;
+      intensity: number;
+    };
+    environment: 'studio' | 'sunset' | 'dawn' | 'night' | 'forest';
+    animation: 'none' | 'rotate' | 'bounce' | 'pulse';
+  };
+  thumbnail?: string;
+  isPublic: boolean;
+  likes: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Badge {
+  id: number;
+  name: string;
+  description: string;
+  icon: string;
+  tier: 'bronze' | 'silver' | 'gold';
+  category: 'control_flow' | 'stylistic_tweaks' | 'chain_prompts' | '3d_mastery';
+  requirements: {
+    type: 'scene_count' | 'score_threshold' | 'mission_complete';
+    value: number;
+    conditions?: string[];
+  };
+  createdAt: Date;
+}
+
+export interface UserBadge {
+  id: number;
+  userId: number;
+  badgeId: number;
+  badge: Badge;
+  earnedAt: Date;
+}
+
+export interface Mission {
+  id: number;
+  title: string;
+  description: string;
+  category: string;
+  difficulty: 'beginner' | 'intermediate' | 'advanced';
+  targetSceneConfig: Scene3D['sceneConfig'];
+  successCriteria: {
+    geometryMatch: boolean;
+    colorSimilarity: number; // 0-100
+    positionTolerance: number;
+    lightingMatch: boolean;
+  };
+  rewardBadgeId?: number;
+  rewardBadge?: Badge;
+  isActive: boolean;
+  createdAt: Date;
 }

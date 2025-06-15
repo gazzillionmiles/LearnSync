@@ -115,3 +115,59 @@ export const resetPasswordSchema = z.object({
 
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
+export const exerciseSubmissions = pgTable('exercise_submissions', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  moduleId: text('module_id').notNull(),
+  exerciseId: text('exercise_id').notNull(),
+  userPrompt: text('user_prompt').notNull(),
+  score: integer('score'),
+  feedback: text('feedback'),
+  suggestions: text('suggestions'),
+  submittedAt: timestamp('submitted_at').defaultNow().notNull(),
+});
+
+export const scenes3d = pgTable('scenes_3d', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  title: text('title').notNull(),
+  prompt: text('prompt').notNull(),
+  sceneConfig: jsonb('scene_config').notNull(), // Store 3D scene parameters
+  thumbnail: text('thumbnail'), // Base64 or URL for preview
+  isPublic: boolean('is_public').default(false),
+  likes: integer('likes').default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const badges = pgTable('badges', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description').notNull(),
+  icon: text('icon').notNull(),
+  tier: text('tier').notNull(), // 'bronze', 'silver', 'gold'
+  category: text('category').notNull(), // 'control_flow', 'stylistic_tweaks', 'chain_prompts'
+  requirements: jsonb('requirements').notNull(), // Criteria for earning
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const userBadges = pgTable('user_badges', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  badgeId: integer('badge_id').references(() => badges.id).notNull(),
+  earnedAt: timestamp('earned_at').defaultNow().notNull(),
+});
+
+export const missions = pgTable('missions', {
+  id: serial('id').primaryKey(),
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  category: text('category').notNull(),
+  difficulty: text('difficulty').notNull(), // 'beginner', 'intermediate', 'advanced'
+  targetSceneConfig: jsonb('target_scene_config').notNull(),
+  successCriteria: jsonb('success_criteria').notNull(),
+  rewardBadgeId: integer('reward_badge_id').references(() => badges.id),
+  isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
