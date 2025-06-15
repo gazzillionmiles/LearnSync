@@ -9,23 +9,28 @@ export async function evaluatePromptWithGroq(
   problemDescription: string,
   expectedPrompt: string,
   modelAnswer?: string
-): Promise<Feedback> {
+): Promise<{
+  score: number;
+  suggestions: string[];
+  semanticSimilarity: number;
+  sceneGenerated: boolean;
+}> {
   if (!groq) {
     throw new Error('Groq client is not initialized. Please check your GROQ_API_KEY environment variable.');
   }
 
   try {
     // System prompt to guide the AI on how to evaluate
-    const systemPrompt = `You are an expert in prompt engineering evaluation. 
-Your task is to evaluate a user's prompt engineering attempt based on the following criteria:
-1. Clarity and specificity of instructions
-2. Alignment with the given problem
-3. Effectiveness of structure and formatting
-4. Inclusion of necessary constraints and parameters
-5. Overall quality compared to the example
+    const systemPrompt = `You are an expert in 3D scene generation and prompt engineering evaluation. 
+Your task is to evaluate a user's prompt for creating 3D scenes based on these criteria:
+1. 3D Scene Clarity: How clearly does the prompt specify geometric shapes, materials, and spatial relationships?
+2. Technical Accuracy: Does it include proper 3D terminology (geometry, materials, lighting, animation)?
+3. Visual Completeness: Are lighting, colors, and visual properties well-defined?
+4. Animation & Effects: If applicable, are motion and particle effects clearly described?
+5. Semantic Similarity: How closely does the intent match the expected outcome?
 
-Rate the prompt on a scale of 1-10 and provide 2-3 specific, constructive suggestions for improvement.
-Respond in valid JSON format with two fields: "score" (number between 1-10) and "suggestions" (array of strings).`;
+Rate the prompt on a scale of 1-10 and provide semantic similarity (0-1), scene generation feasibility (true/false), and 2-3 specific suggestions.
+Respond in valid JSON format with fields: "score" (1-10), "semanticSimilarity" (0-1), "sceneGenerated" (boolean), "suggestions" (array of strings).`;
 
     // User message with the context and the prompt to evaluate
     const userMessage = `Problem: ${problemDescription}
@@ -67,7 +72,9 @@ Evaluate this prompt and provide a score (1-10) and 2-3 specific suggestions for
 
     return {
       score: parsedResponse.score,
-      suggestions: parsedResponse.suggestions
+      suggestions: parsedResponse.suggestions,
+      semanticSimilarity: parsedResponse.semanticSimilarity || 0.5,
+      sceneGenerated: parsedResponse.sceneGenerated || false
     };
 
   } catch (error) {

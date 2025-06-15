@@ -1,45 +1,122 @@
-// This file contains shared types used by both the client and server
 
-// Module Structure Types
-export interface Concept {
-  term: string;
-  definition: string;
+// 3D Scene Types
+export interface ThreeDScene {
+  id: string;
+  userId: number;
+  prompt: string;
+  sceneData: {
+    geometry: string; // 'cube', 'sphere', 'plane', etc.
+    material: {
+      color: string;
+      texture?: string;
+      metalness?: number;
+      roughness?: number;
+    };
+    lighting: {
+      ambient: { intensity: number; color: string };
+      directional: { intensity: number; color: string; position: [number, number, number] };
+    };
+    camera: {
+      position: [number, number, number];
+      rotation: [number, number, number];
+    };
+    animation?: {
+      type: 'rotate' | 'bounce' | 'float';
+      speed: number;
+    };
+    particles?: {
+      count: number;
+      type: string;
+      color: string;
+    };
+  };
+  createdAt: Date;
+  isPublic: boolean;
+  likes: number;
 }
 
-export interface Exercise {
+// Challenge Types (replacing old modules)
+export interface Challenge {
   id: string;
   title: string;
   description: string;
-  problem: string;
-  example: string;
-  modelAnswer?: string;
+  difficulty: 'bronze' | 'silver' | 'gold';
+  category: 'geometry' | 'lighting' | 'animation' | 'materials' | 'particles';
+  expectedPrompt: string;
+  sceneTemplate: Partial<ThreeDScene['sceneData']>;
+  successCriteria: {
+    minScore: number;
+    requiredElements: string[];
+  };
+  hints: string[];
+  estimatedTime: number; // in minutes
 }
 
-export interface Module {
+// Badge System
+export interface Badge {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: string;
+  requirements: {
+    challengesCompleted?: number;
+    specificChallenges?: string[];
+    minScore?: number;
+    streakDays?: number;
+  };
+}
+
+// Mission/Quest System
+export interface Mission {
   id: string;
   title: string;
   description: string;
-  objectives: string[];
-  concepts: Concept[];
-  exercises: Exercise[];
+  challenges: string[]; // Challenge IDs
+  rewards: {
+    points: number;
+    badges: string[];
+  };
+  isActive: boolean;
+  timeLimit?: number; // in hours
 }
 
 // User Progress Types
-export interface CompletedExercise {
-  moduleId: string;
-  exerciseId: string;
+export interface CompletedChallenge {
+  challengeId: string;
+  score: number;
+  attempts: number;
+  bestPrompt: string;
+  sceneId?: string;
   timestamp: number;
 }
 
 export interface UserProgress {
-  completedExercises: CompletedExercise[];
+  completedExercises: CompletedChallenge[]; // Renamed but keeping for compatibility
   points: number;
+  badges: string[];
+  currentMission?: string;
+  streak: number;
+  lastActiveDate: Date;
+  level: number;
+  preferences: {
+    theme: 'light' | 'dark';
+    autoSave: boolean;
+    showHints: boolean;
+  };
 }
 
-// Feedback Type
+// Feedback Type (Enhanced for 3D)
 export interface Feedback {
   score: number;
   suggestions: string[];
+  semanticSimilarity?: number;
+  sceneAnalysis?: {
+    geometryMatch: boolean;
+    colorAccuracy: number;
+    lightingQuality: number;
+    overallComposition: number;
+  };
 }
 
 // User Type
@@ -63,5 +140,36 @@ export interface LeaderboardEntry {
   userId: number;
   username: string;
   points: number;
-  completedExercises: number;
+  completedChallenges: number;
+  level: number;
+  badges: string[];
+}
+
+// Collaborative Features
+export interface CollaborativeSession {
+  id: string;
+  hostUserId: number;
+  participants: number[];
+  sceneId: string;
+  isActive: boolean;
+  createdAt: Date;
+}
+
+export interface Comment {
+  id: string;
+  userId: number;
+  username: string;
+  sceneId: string;
+  content: string;
+  position?: [number, number]; // 2D position on canvas for annotation
+  timestamp: Date;
+}
+
+// Analytics Types
+export interface PromptMetrics {
+  totalPrompts: number;
+  successRate: number;
+  averageScore: number;
+  mostUsedKeywords: { word: string; count: number }[];
+  averageResponseTime: number;
 }
