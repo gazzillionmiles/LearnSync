@@ -1,13 +1,11 @@
+
 import { drizzle } from "drizzle-orm/node-postgres";
 import pkg from 'pg';
 const { Pool } = pkg;
 import { userProgress, users, type User, type InsertUser } from "@shared/schema";
 import type { UserProgress, Module, Exercise, Feedback, LeaderboardEntry } from "@shared/types";
-import { modules } from "./data/modules";
-
-// Modules data
 import { evaluatePromptWithGroq } from "./services/groqService";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 if (!process.env.DB_URL) {
   throw new Error("DB_URL environment variable is required");
@@ -23,7 +21,9 @@ export interface IStorage {
   // User methods
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: number, updates: Partial<User>): Promise<User | undefined>;
 
   // Progress methods
   getUserProgress(userId: number): Promise<UserProgress>;
@@ -41,34 +41,16 @@ export interface IStorage {
   evaluatePrompt(userPrompt: string, moduleId: string, exerciseId: string): Promise<Feedback>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private progress: Map<number, UserProgress>;
-  private modules: Module[];
-  currentId: number;
-
-  constructor() {
-    this.users = new Map();
-    this.progress = new Map();
-    this.modules = modules;
-    this.currentId = 1;
-
-    // Add a test user
-    this.createUser({ 
-      username: "testuser", 
-      password: "password",
-      email: "test@example.com"
-    });
-  }
-
-  async getUser(userId: number) {
+export class DbStorage implements IStorage {
+  
+  async getUser(userId: number): Promise<User | undefined> {
     try {
       const result = await db
         .select()
         .from(users)
         .where(eq(users.id, userId))
         .limit(1);
-
+      
       return result[0] || undefined;
     } catch (error) {
       console.error("Error fetching user:", error);
@@ -77,186 +59,308 @@ export class MemStorage implements IStorage {
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username
-    );
+    try {
+      const result = await db
+        .select()
+        .from(users)
+        .where(eq(users.username, username))
+        .limit(1);
+      
+      return result[0] || undefined;
+    } catch (error) {
+      console.error("Error fetching user by username:", error);
+      return undefined;
+    }
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentId++;
-    const user: User = { 
-      ...insertUser, 
-      id,
-      isVerified: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      resetToken: null,
-      resetTokenExpiry: null
-    };
-    this.users.set(id, user);
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    try {
+      const result = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+      
+      return result[0] || undefined;
+    } catch (error) {
+      console.error("Error fetching user by email:", error);
+      return undefined;
+    }
+  }
 
-    // Initialize user progress
-    this.progress.set(id, {
-      completedExercises: [],
-      points: 0
-    });
+  async createUser(user: InsertUser): Promise<User> {
+    try {
+      const result = await db
+        .insert(users)
+        .values({
+          email: user.email,
+          password: user.password,
+          username: user.username,
+          isVerified: false,
+        })
+        .returning();
 
-    return user;
+      const newUser = result[0];
+
+      // Initialize user progress
+      await db.insert(userProgress).values({
+        userId: newUser.id,
+        completedExercises: [],
+        points: 0,
+      });
+
+      return newUser;
+    } catch (error) {
+      console.error("Error creating user:", error);
+      throw error;
+    }
+  }
+
+  async updateUser(id: number, updates: Partial<User>): Promise<User | undefined> {
+    try {
+      const result = await db
+        .update(users)
+        .set(updates)
+        .where(eq(users.id, id))
+        .returning();
+      
+      return result[0] || undefined;
+    } catch (error) {
+      console.error("Error updating user:", error);
+      return undefined;
+    }
   }
 
   async getUserProgress(userId: number): Promise<UserProgress> {
-    let userProgress = this.progress.get(userId);
+    try {
+      const result = await db
+        .select()
+        .from(userProgress)
+        .where(eq(userProgress.userId, userId))
+        .limit(1);
 
-    if (!userProgress) {
-      userProgress = { completedExercises: [], points: 0 };
-      this.progress.set(userId, userProgress);
+      if (result.length === 0) {
+        // Create initial progress if it doesn't exist
+        const newProgress = await db
+          .insert(userProgress)
+          .values({
+            userId: userId,
+            completedExercises: [],
+            points: 0,
+          })
+          .returning();
+        
+        return {
+          completedExercises: newProgress[0].completedExercises,
+          points: newProgress[0].points,
+        };
+      }
+
+      return {
+        completedExercises: result[0].completedExercises,
+        points: result[0].points,
+      };
+    } catch (error) {
+      console.error("Error fetching user progress:", error);
+      return { completedExercises: [], points: 0 };
     }
-
-    return userProgress;
   }
 
   async completeExercise(userId: number, moduleId: string, exerciseId: string): Promise<UserProgress> {
-    const userProgress = await this.getUserProgress(userId);
+    try {
+      const currentProgress = await this.getUserProgress(userId);
+      
+      // Check if exercise is already completed
+      const alreadyCompleted = currentProgress.completedExercises.some(
+        ex => ex.moduleId === moduleId && ex.exerciseId === exerciseId
+      );
 
-    // Check if already completed
-    const alreadyCompleted = userProgress.completedExercises.some(
-      ex => ex.moduleId === moduleId && ex.exerciseId === exerciseId
-    );
+      if (alreadyCompleted) {
+        return currentProgress;
+      }
 
-    // Add to completed exercises if not already completed
-    if (!alreadyCompleted) {
-      userProgress.completedExercises.push({
+      // Add new completed exercise
+      const newCompletedExercise = {
         moduleId,
         exerciseId,
-        timestamp: Date.now()
-      });
+        timestamp: Date.now(),
+      };
 
-      // Add points for completing exercise (10 points per exercise)
-      userProgress.points += 10;
+      const updatedExercises = [...currentProgress.completedExercises, newCompletedExercise];
+      const newPoints = currentProgress.points + 10; // Award 10 points per exercise
 
-      // Update the progress map
-      this.progress.set(userId, userProgress);
+      // Update in database
+      await db
+        .update(userProgress)
+        .set({
+          completedExercises: updatedExercises,
+          points: newPoints,
+        })
+        .where(eq(userProgress.userId, userId));
+
+      return {
+        completedExercises: updatedExercises,
+        points: newPoints,
+      };
+    } catch (error) {
+      console.error("Error completing exercise:", error);
+      throw error;
     }
-
-    return userProgress;
   }
 
   async getAllModules(): Promise<Module[]> {
-    return this.modules;
+    try {
+      // Query modules with their exercises
+      const modulesResult = await db.execute(sql`
+        SELECT 
+          m.id,
+          m.title,
+          m.description,
+          m.objectives,
+          m.concepts,
+          COALESCE(
+            json_agg(
+              json_build_object(
+                'id', e.id,
+                'title', e.title,
+                'description', e.description,
+                'problem', e.problem,
+                'example', e.example,
+                'modelAnswer', e.model_answer
+              ) ORDER BY e.created_at
+            ) FILTER (WHERE e.id IS NOT NULL),
+            '[]'::json
+          ) as exercises
+        FROM modules m
+        LEFT JOIN exercises e ON m.id = e.module_id
+        GROUP BY m.id, m.title, m.description, m.objectives, m.concepts
+        ORDER BY m.created_at
+      `);
+
+      return modulesResult.rows.map((row: any) => ({
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        objectives: row.objectives,
+        concepts: row.concepts,
+        exercises: row.exercises,
+      }));
+    } catch (error) {
+      console.error("Error fetching modules:", error);
+      return [];
+    }
   }
 
   async getModuleById(moduleId: string): Promise<Module | undefined> {
-    return this.modules.find(module => module.id === moduleId);
+    try {
+      const result = await db.execute(sql`
+        SELECT 
+          m.id,
+          m.title,
+          m.description,
+          m.objectives,
+          m.concepts,
+          COALESCE(
+            json_agg(
+              json_build_object(
+                'id', e.id,
+                'title', e.title,
+                'description', e.description,
+                'problem', e.problem,
+                'example', e.example,
+                'modelAnswer', e.model_answer
+              ) ORDER BY e.created_at
+            ) FILTER (WHERE e.id IS NOT NULL),
+            '[]'::json
+          ) as exercises
+        FROM modules m
+        LEFT JOIN exercises e ON m.id = e.module_id
+        WHERE m.id = ${moduleId}
+        GROUP BY m.id, m.title, m.description, m.objectives, m.concepts
+      `);
+
+      if (result.rows.length === 0) {
+        return undefined;
+      }
+
+      const row = result.rows[0] as any;
+      return {
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        objectives: row.objectives,
+        concepts: row.concepts,
+        exercises: row.exercises,
+      };
+    } catch (error) {
+      console.error("Error fetching module:", error);
+      return undefined;
+    }
   }
 
   async getExerciseById(moduleId: string, exerciseId: string): Promise<Exercise | undefined> {
-    const module = await this.getModuleById(moduleId);
-    if (!module) return undefined;
+    try {
+      const result = await db.execute(sql`
+        SELECT 
+          e.id,
+          e.title,
+          e.description,
+          e.problem,
+          e.example,
+          e.model_answer as "modelAnswer"
+        FROM exercises e
+        WHERE e.module_id = ${moduleId} AND e.id = ${exerciseId}
+        LIMIT 1
+      `);
 
-    return module.exercises.find(exercise => exercise.id === exerciseId);
+      return result.rows[0] as Exercise || undefined;
+    } catch (error) {
+      console.error("Error fetching exercise:", error);
+      return undefined;
+    }
   }
 
-  async getLeaderboard() {
-    // Mock leaderboard data for now
-    return [
-      { userId: 1, username: "alice", points: 250, completedExercises: 5 },
-      { userId: 2, username: "bob", points: 180, completedExercises: 3 },
-      { userId: 3, username: "charlie", points: 120, completedExercises: 2 },
-    ];
+  async getLeaderboard(): Promise<LeaderboardEntry[]> {
+    try {
+      const result = await db.execute(sql`
+        SELECT 
+          u.id as "userId",
+          u.username,
+          up.points,
+          jsonb_array_length(up.completed_exercises) as "completedExercises"
+        FROM users u
+        JOIN user_progress up ON u.id = up.user_id
+        WHERE up.points > 0
+        ORDER BY up.points DESC, jsonb_array_length(up.completed_exercises) DESC
+        LIMIT 10
+      `);
+
+      return result.rows.map((row: any) => ({
+        userId: row.userId,
+        username: row.username,
+        points: row.points,
+        completedExercises: row.completedExercises || 0,
+      }));
+    } catch (error) {
+      console.error("Error fetching leaderboard:", error);
+      return [];
+    }
   }
 
   async evaluatePrompt(userPrompt: string, moduleId: string, exerciseId: string): Promise<Feedback> {
-    // Get module and exercise
-    const exercise = await this.getExerciseById(moduleId, exerciseId);
-
-    if (!exercise) {
-      return {
-        score: 0,
-        suggestions: ["Exercise not found"]
-      };
-    }
-
     try {
-      // Use Groq for evaluation
-      console.log(`Evaluating prompt with Groq for module: ${moduleId}, exercise: ${exerciseId}`);
-
-      const feedback = await evaluatePromptWithGroq(
-        userPrompt,
-        exercise.problem,
-        exercise.example,
-        exercise.modelAnswer
-      );
-
-      if (!feedback) {
-        throw new Error("No feedback received from Groq");
+      const exercise = await this.getExerciseById(moduleId, exerciseId);
+      if (!exercise) {
+        throw new Error("Exercise not found");
       }
 
-      return feedback;
+      return await evaluatePromptWithGroq(userPrompt, exercise.problem, exercise.modelAnswer);
     } catch (error) {
-      console.error("Error during Groq evaluation:", error);
-
-      // Return a clear error message to the user
-      return {
-        score: 0,
-        suggestions: [
-          "Unable to evaluate your prompt at this time.",
-          "Please check your internet connection and try again.",
-          "If the problem persists, contact support."
-        ]
-      };
+      console.error("Error evaluating prompt:", error);
+      throw error;
     }
   }
 }
 
-// Helper function to check for keyword matches
-function checkKeywordMatch(userPrompt: string, problem: string): boolean {
-  const promptLower = userPrompt.toLowerCase();
-  const problemWords = problem.toLowerCase()
-    .split(/\s+/)
-    .filter(word => word.length > 5) // Only consider significant words
-    .slice(0, 5); // Take up to 5 significant words
-
-  return problemWords.some(word => promptLower.includes(word));
-}
-
-// Helper function to check for pattern matches
-function checkPatternMatch(userPrompt: string, example: string): boolean {
-  const promptStructure = getTextStructure(userPrompt);
-  const exampleStructure = getTextStructure(example);
-
-  return promptStructure.some(s => exampleStructure.includes(s));
-}
-
-// Helper to identify text structure patterns
-function getTextStructure(text: string): string[] {
-  const patterns: string[] = [];
-
-  // Check for numbered list
-  if (/\d+\.\s/.test(text)) {
-    patterns.push("numbered-list");
-  }
-
-  // Check for bullet points
-  if (/•|\*|-\s/.test(text)) {
-    patterns.push("bullet-points");
-  }
-
-  // Check for sections/headings
-  if (/[A-Z][^.!?]*:/.test(text)) {
-    patterns.push("section-headers");
-  }
-
-  // Check for question format
-  if (/\?/.test(text)) {
-    patterns.push("questions");
-  }
-
-  // Check for command/instruction format
-  if (/^(write|create|generate|list|explain|analyze)/i.test(text)) {
-    patterns.push("command");
-  }
-
-  return patterns.length ? patterns : ["plain-text"];
-}
-
-export const storage = new MemStorage();
+// Create the storage instance
+export const storage = new DbStorage();

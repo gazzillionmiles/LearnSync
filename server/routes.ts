@@ -15,18 +15,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         errors: error.errors
       });
     }
-    
+
     console.error("Unexpected error:", error);
     return res.status(500).json({
       message: "Internal server error"
     });
   };
 
-  // Authentication routes
+  // Auth Routes
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const data = registerSchema.parse(req.body);
-      const result = await AuthService.register(data);
+      const { email, password, username } = registerSchema.parse(req.body);
+
+      // Check if user already exists
+      const existingUserByUsername = await storage.getUserByUsername(username);
+      const existingUserByEmail = await storage.getUserByEmail(email);
+
+      if (existingUserByUsername) {
+        return res.status(400).json({ message: "Username already exists" });
+      }
+
+      if (existingUserByEmail) {
+        return res.status(400).json({ message: "Email already exists" });
+      }
+
+      const result = await AuthService.register({ email, password, username });
       res.status(201).json(result);
     } catch (error) {
       if (error instanceof ZodError) {
@@ -35,7 +48,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors: error.errors
         });
       }
-      
+
       const message = error instanceof Error ? error.message : "Registration failed";
       res.status(400).json({ message });
     }
@@ -53,7 +66,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors: error.errors
         });
       }
-      
+
       const message = error instanceof Error ? error.message : "Login failed";
       res.status(401).json({ message });
     }
@@ -64,12 +77,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!req.user) {
         return res.status(403).json({ message: "Not authenticated" });
       }
-      
+
       const user = await AuthService.getUserById(req.user.id);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-      
+
       res.json(user);
     } catch (error) {
       console.error("Get user profile error:", error);
@@ -99,11 +112,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const moduleId = req.params.moduleId;
       const module = await storage.getModuleById(moduleId);
-      
+
       if (!module) {
         return res.status(404).json({ message: "Module not found" });
       }
-      
+
       res.json(module);
     } catch (error) {
       console.error("Error fetching module:", error);
@@ -117,7 +130,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!req.user) {
         return res.status(403).json({ message: "Not authenticated" });
       }
-      
+
       const progress = await storage.getUserProgress(req.user.id);
       res.json(progress);
     } catch (error) {
@@ -139,7 +152,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data.moduleId,
         data.exerciseId
       );
-      
+
       res.json(progress);
     } catch (error) {
       handleZodError(error, res);
@@ -155,7 +168,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data.moduleId,
         data.exerciseId
       );
-      
+
       res.json(feedback);
     } catch (error) {
       handleZodError(error, res);
