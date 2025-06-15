@@ -1,32 +1,31 @@
-import { useState } from "react";
-import { useRoute, Link } from "wouter";
-import { useModules } from "@/hooks/useModules";
-import { useProgress } from "@/hooks/useProgress";
-import { ChevronLeft, CheckCircle } from "lucide-react";
-import ExerciseForm from "@/components/ExerciseForm";
+import { useModules } from "../hooks/useModules";
+import { useProgress } from "../contexts/ProgressContext";
+import { Link } from "wouter";
+import { ChevronLeft, ChevronRight, Trophy, Book } from "lucide-react";
+import { useState, useEffect } from "react";
+import ExerciseForm from "../components/ExerciseForm";
 
-export default function ModulePage() {
-  // Get moduleId from route params
-  const [, params] = useRoute<{ moduleId: string }>("/modules/:moduleId");
-  const moduleId = params?.moduleId || "";
+export default function ModulePage({ params }: { params: { moduleId: string } }) {
+  const { moduleId } = params;
+  const { modules, isLoadingModules, getModuleById, getExerciseById, getNextExercise } = useModules();
 
   // State for active exercise
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null);
 
   // Get module data
-  const { getModuleById, isLoadingModules, getExerciseById, getNextExercise } = useModules();
-  const module = getModuleById(moduleId);
-
-  // Get progress data
   const { getModuleProgress, isExerciseCompleted } = useProgress();
+
+  // Get module data
+
+  const module = getModuleById(moduleId);
 
   // Handle exercise completion
   const handleExerciseComplete = () => {
     if (!activeExerciseId || !module) return;
-    
+
     // Get the next exercise
     const nextExercise = getNextExercise(moduleId, activeExerciseId);
-    
+
     if (nextExercise) {
       // If there's a next exercise, go to it
       setActiveExerciseId(nextExercise.id);
@@ -51,8 +50,8 @@ export default function ModulePage() {
     );
   }
 
-  const activeExercise = activeExerciseId 
-    ? getExerciseById(moduleId, activeExerciseId) 
+  const activeExercise = activeExerciseId
+    ? getExerciseById(moduleId, activeExerciseId)
     : null;
 
   return (
@@ -104,16 +103,16 @@ export default function ModulePage() {
 
             <div className="space-y-4">
               {module.exercises.map((exercise, index) => (
-                <div 
+                <div
                   key={exercise.id}
                   className={`bg-white rounded-lg border shadow-sm p-4 flex justify-between items-center ${
-                    isExerciseCompleted(module.id, exercise.id) 
-                      ? 'border-green-600' 
+                    isExerciseCompleted(module.id, exercise.id)
+                      ? 'border-green-600'
                       : 'border-gray-200'
                   }`}
                 >
                   <div className="flex items-center">
-                    <div 
+                    <div
                       className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center mr-4 ${
                         isExerciseCompleted(module.id, exercise.id)
                           ? 'bg-green-600 text-white'
@@ -127,7 +126,7 @@ export default function ModulePage() {
                       <p className="text-sm text-gray-500">{exercise.description}</p>
                     </div>
                   </div>
-                  <button 
+                  <button
                     onClick={() => setActiveExerciseId(exercise.id)}
                     className={`ml-4 text-sm font-medium focus:outline-none ${
                       isExerciseCompleted(module.id, exercise.id)
@@ -155,7 +154,7 @@ export default function ModulePage() {
             )}
           </div>
 
-          <ExerciseForm 
+          <ExerciseForm
             exercise={activeExercise}
             moduleId={moduleId}
             onComplete={handleExerciseComplete}

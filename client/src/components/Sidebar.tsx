@@ -1,12 +1,11 @@
 import { Link, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
 import { useProgress } from "../contexts/ProgressContext";
 import { Module } from "@shared/types";
 import { LucideCode, LucideLayout, LucideTrophy, LucideLogOut } from "lucide-react";
 import { Logo } from "@/lib/icons";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import api from "../lib/api";
+import { useModules } from "../hooks/useModules";
 
 interface SidebarProps {
   mobileSidebarOpen: boolean;
@@ -17,18 +16,7 @@ export default function Sidebar({ mobileSidebarOpen, setMobileSidebarOpen }: Sid
   const [location] = useLocation();
   const { getTotalPoints } = useProgress();
   
-  const { data: modules = [], isLoading, error } = useQuery<Module[]>({
-    queryKey: ['/modules'],
-    queryFn: async () => {
-      const response = await api.get<Module[]>('/modules');
-      return response.data;
-    },
-    staleTime: 5 * 60 * 1000, // Data is considered fresh for 5 minutes
-    gcTime: 10 * 60 * 1000, // Cache is kept for 10 minutes
-    refetchOnWindowFocus: false, // Don't refetch when window regains focus
-    refetchOnMount: false, // Don't refetch when component mounts
-    refetchOnReconnect: false, // Don't refetch when reconnecting
-  });
+  const { modules, isLoadingModules: isLoading, modulesError: error } = useModules();
 
   // Helper to determine if a route is active
   const isActive = (path: string) => {
