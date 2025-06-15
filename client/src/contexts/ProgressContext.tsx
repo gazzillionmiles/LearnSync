@@ -1,7 +1,7 @@
 import { createContext, useContext, ReactNode, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { UserProgress, Module } from "@shared/types";
-import { apiRequest } from "@/lib/queryClient";
+import api from "@/lib/api";
 
 interface ProgressContextType {
   progress: UserProgress | null;
@@ -26,46 +26,49 @@ export function ProgressProvider({ children }: { children: ReactNode }) {
     data: progress, 
     isLoading 
   } = useQuery<UserProgress>({
-    queryKey: [`/api/progress/${userId}`],
+    queryKey: [`/progress/${userId}`],
   });
 
   // Fetch modules for calculating total exercises
   const { data: modules = [] } = useQuery<Module[]>({
-    queryKey: ['/api/modules'],
+    queryKey: ['/modules'],
   });
 
   // Mutation for completing exercises
   const completeMutation = useMutation({
     mutationFn: async ({ moduleId, exerciseId }: { moduleId: string; exerciseId: string }) => {
-      const res = await apiRequest("POST", "/api/progress/complete", {
-        userId,
+      const response = await api.post('/progress/complete', {
         moduleId,
         exerciseId
       });
-      return res.json();
+      return response.data;
     },
     onSuccess: () => {
       // Invalidate progress query to refetch updated data
-      queryClient.invalidateQueries({ queryKey: [`/api/progress/${userId}`] });
-      queryClient.invalidateQueries({ queryKey: ['/api/leaderboard'] });
+      queryClient.invalidateQueries({ queryKey: [`/progress/${userId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/leaderboard'] });
     }
   });
 
   // Get progress for a specific module
   const getModuleProgress = (moduleId: string) => {
-    const module = modules.find(m => m.id === moduleId);
-    const totalExercises = module?.exercises.length || 0;
+    if (!moduleId) {
+      return { completed: 0, total: 0 };
+    }
+
+    const module = modules?.find(m => m?.id === moduleId);
+    const totalExercises = module?.exercises?.length || 0;
     
-    if (!progress) {
+    if (!progress?.completedExercises) {
       return { completed: 0, total: totalExercises };
     }
     
     const completedExercises = progress.completedExercises.filter(
-      ex => ex.moduleId === moduleId
+      ex => ex?.moduleId === moduleId
     );
     
     return {
-      completed: completedExercises.length,
+      completed: completedExercises?.length || 0,
       total: totalExercises
     };
   };
@@ -77,33 +80,41 @@ export function ProgressProvider({ children }: { children: ReactNode }) {
 
   // Get total completed exercises
   const getTotalCompletedExercises = () => {
-    return progress?.completedExercises.length || 0;
+    return progress?.completedExercises?.length || 0;
   };
 
   // Get total exercises across all modules
   const getTotalExercises = () => {
-    return modules.reduce((total, module) => total + module.exercises.length, 0);
+    if (!modules) return 0;
+    return modules.reduce((total, module) => {
+      if (!module?.exercises) return total;
+      return total + module.exercises.length;
+    }, 0);
   };
 
   // Check if a specific exercise is completed
   const isExerciseCompleted = (moduleId: string, exerciseId: string) => {
-    if (!progress) return false;
+    if (!progress?.completedExercises || !moduleId || !exerciseId) return false;
     
     return progress.completedExercises.some(
-      ex => ex.moduleId === moduleId && ex.exerciseId === exerciseId
+      ex => ex?.moduleId === moduleId && ex?.exerciseId === exerciseId
     );
   };
 
   // Complete an exercise
   const completeExercise = async (moduleId: string, exerciseId: string) => {
+    if (!moduleId || !exerciseId) {
+      throw new Error('Module ID and Exercise ID are required');
+    }
     await completeMutation.mutateAsync({ moduleId, exerciseId });
   };
 
   // Get number of completed modules
   const getCompletedModules = () => {
-    if (!progress || modules.length === 0) return 0;
+    if (!progress?.completedExercises || !modules?.length) return 0;
     
     return modules.filter(module => {
+      if (!module?.id) return false;
       const moduleProgress = getModuleProgress(module.id);
       return moduleProgress.completed === moduleProgress.total;
     }).length;

@@ -1,57 +1,57 @@
-import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { QueryClient } from '@tanstack/react-query';
+import api from './api';
 
-async function throwIfResNotOk(res: Response) {
-  if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
-  }
-}
-
-export async function apiRequest(
-  method: string,
-  url: string,
-  data?: unknown | undefined,
-): Promise<Response> {
-  const res = await fetch(url, {
-    method,
-    headers: data ? { "Content-Type": "application/json" } : {},
-    body: data ? JSON.stringify(data) : undefined,
-    credentials: "include",
-  });
-
-  await throwIfResNotOk(res);
-  return res;
-}
-
-type UnauthorizedBehavior = "returnNull" | "throw";
-export const getQueryFn: <T>(options: {
-  on401: UnauthorizedBehavior;
-}) => QueryFunction<T> =
-  ({ on401: unauthorizedBehavior }) =>
-  async ({ queryKey }) => {
-    const res = await fetch(queryKey[0] as string, {
-      credentials: "include",
+// Helper function to make API requests
+export const apiRequest = async <T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> => {
+  try {
+    const response = await api.request({
+      url: endpoint,
+      ...options,
     });
+    return response.data;
+  } catch (error: any) {
+    if (error.response?.status === 403) {
+      // Clear token but don't redirect
+      localStorage.removeItem('token');
+    }
+    throw error;
+  }
+};
 
-    if (unauthorizedBehavior === "returnNull" && res.status === 401) {
+// Helper function to get query function
+export const getQueryFn = async <T>(
+  endpoint: string,
+  throwOnUnauthorized = true
+): Promise<T | null> => {
+  try {
+    const response = await api.get<T>(endpoint);
+    return response.data;
+  } catch (error: any) {
+    if (error.response?.status === 403) {
+      if (throwOnUnauthorized) {
+        // Clear token but don't redirect
+        localStorage.removeItem('token');
+      }
       return null;
     }
+    throw error;
+  }
+};
 
-    await throwIfResNotOk(res);
-    return await res.json();
-  };
-
+// Create a client
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      queryFn: getQueryFn({ on401: "throw" }),
-      refetchInterval: false,
-      refetchOnWindowFocus: false,
-      staleTime: Infinity,
       retry: false,
-    },
-    mutations: {
-      retry: false,
+      staleTime: 5 * 60 * 1000, // Data is considered fresh for 5 minutes
+      gcTime: 10 * 60 * 1000, // Cache is kept for 10 minutes
+      refetchOnWindowFocus: false, // Don't refetch when window regains focus
+      refetchOnMount: false, // Don't refetch when component mounts
+      refetchOnReconnect: false, // Don't refetch when reconnecting
+      queryFn: ({ queryKey }) => getQueryFn(queryKey[0] as string),
     },
   },
 });

@@ -3,10 +3,15 @@ import { Module } from "@shared/types";
 import { useProgress } from "@/hooks/useProgress";
 import ModuleCard from "@/components/ModuleCard";
 import ProgressBar from "@/components/ProgressBar";
+import api from "@/lib/api";
 
 export default function Dashboard() {
   const { data: modules = [], isLoading } = useQuery<Module[]>({
-    queryKey: ['/api/modules'],
+    queryKey: ['/modules'],
+    queryFn: async () => {
+      const response = await api.get<Module[]>('/modules');
+      return response.data;
+    },
   });
 
   const { 

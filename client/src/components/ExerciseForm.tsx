@@ -5,8 +5,8 @@ import { Exercise } from "@shared/types";
 import FeedbackDisplay from "./FeedbackDisplay";
 import { Feedback } from "@shared/types";
 import { useProgress } from "@/hooks/useProgress";
-import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import api from "@/lib/api";
 
 interface ExerciseFormProps {
   exercise: Exercise;
@@ -26,14 +26,13 @@ export default function ExerciseForm({ exercise, moduleId, onComplete }: Exercis
 
     setIsEvaluating(true);
     try {
-      const response = await apiRequest("POST", "/api/evaluate", {
+      const response = await api.post('/evaluate', {
         userPrompt,
         moduleId,
         exerciseId: exercise.id
       });
       
-      const feedbackData = await response.json();
-      setFeedback(feedbackData);
+      setFeedback(response.data);
     } catch (error) {
       console.error("Error evaluating prompt:", error);
       toast({

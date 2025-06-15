@@ -42,6 +42,22 @@ export interface Feedback {
   suggestions: string[];
 }
 
+// User Type
+export interface User {
+  id: number;
+  email: string;
+  username: string;
+  isVerified: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Auth Response Type
+export interface AuthResponse {
+  user: User;
+  token: string;
+}
+
 // Leaderboard Entry Type
 export interface LeaderboardEntry {
   userId: number;

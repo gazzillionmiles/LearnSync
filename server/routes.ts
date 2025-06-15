@@ -1,8 +1,10 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { evaluatePromptSchema, completeExerciseSchema } from "@shared/schema";
+import { evaluatePromptSchema, completeExerciseSchema, registerSchema, loginSchema, resetPasswordSchema, forgotPasswordSchema } from "@shared/schema";
 import { ZodError } from "zod";
+import { AuthService } from "./services/authService";
+import { authenticateToken, optionalAuth, type AuthRequest } from "./middleware/auth";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Error handling middleware for zod validation errors
@@ -20,9 +22,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   };
 
-  // Get all modules
-  app.get("/api/modules", async (_req, res) => {
+  // Authentication routes
+  app.post("/api/auth/register", async (req, res) => {
     try {
+      const data = registerSchema.parse(req.body);
+      const result = await AuthService.register(data);
+      res.status(201).json(result);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        return res.status(400).json({
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
+      const message = error instanceof Error ? error.message : "Registration failed";
+      res.status(400).json({ message });
+    }
+  });
+
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const data = loginSchema.parse(req.body);
+      const result = await AuthService.login(data);
+      res.json(result);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        return res.status(400).json({
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
+      const message = error instanceof Error ? error.message : "Login failed";
+      res.status(401).json({ message });
+    }
+  });
+
+  app.get("/api/auth/me", authenticateToken, async (req: AuthRequest, res) => {
+    try {
+      if (!req.user) {
+        return res.status(403).json({ message: "Not authenticated" });
+      }
+      
+      const user = await AuthService.getUserById(req.user.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      res.json(user);
+    } catch (error) {
+      console.error("Get user profile error:", error);
+      res.status(500).json({ message: "Failed to get user profile" });
+    }
+  });
+
+  // Get all modules
+  app.get("/api/modules", authenticateToken, async (req: AuthRequest, res) => {
+    try {
+      if (!req.user) {
+        return res.status(403).json({ message: "Not authenticated" });
+      }
       const modules = await storage.getAllModules();
       res.json(modules);
     } catch (error) {
@@ -32,8 +92,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get a specific module by ID
-  app.get("/api/modules/:moduleId", async (req, res) => {
+  app.get("/api/modules/:moduleId", authenticateToken, async (req: AuthRequest, res) => {
     try {
+      if (!req.user) {
+        return res.status(403).json({ message: "Not authenticated" });
+      }
       const moduleId = req.params.moduleId;
       const module = await storage.getModuleById(moduleId);
       
@@ -48,16 +111,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get user progress
-  app.get("/api/progress/:userId", async (req, res) => {
+  // Get user progress (authenticated)
+  app.get("/api/progress", authenticateToken, async (req: AuthRequest, res) => {
     try {
-      const userId = parseInt(req.params.userId);
-      
-      if (isNaN(userId)) {
-        return res.status(400).json({ message: "Invalid user ID" });
+      if (!req.user) {
+        return res.status(403).json({ message: "Not authenticated" });
       }
       
-      const progress = await storage.getUserProgress(userId);
+      const progress = await storage.getUserProgress(req.user.id);
       res.json(progress);
     } catch (error) {
       console.error("Error fetching user progress:", error);
@@ -65,12 +126,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Complete an exercise
-  app.post("/api/progress/complete", async (req, res) => {
+  // Complete an exercise (authenticated)
+  app.post("/api/progress/complete", authenticateToken, async (req: AuthRequest, res) => {
     try {
+      if (!req.user) {
+        return res.status(403).json({ message: "Not authenticated" });
+      }
+      console.log(135, req.body);
       const data = completeExerciseSchema.parse(req.body);
       const progress = await storage.completeExercise(
-        data.userId,
+        req.user.id,
         data.moduleId,
         data.exerciseId
       );
@@ -120,6 +185,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching users:", error);
       res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  // Forgot password
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    try {
+      const data = forgotPasswordSchema.parse(req.body);
+      const result = await AuthService.forgotPassword(data.email);
+      res.json(result);
+    } catch (error) {
+      handleZodError(error, res);
+    }
+  });
+
+  // Reset password
+  app.post("/api/auth/reset-password", async (req, res) => {
+    try {
+      const data = resetPasswordSchema.parse(req.body);
+      const result = await AuthService.resetPassword(data.token, data.password);
+      res.json(result);
+    } catch (error) {
+      handleZodError(error, res);
     }
   });
 

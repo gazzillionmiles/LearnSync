@@ -8,7 +8,7 @@ export function useModules() {
     isLoading: isLoadingModules,
     error: modulesError
   } = useQuery<Module[]>({
-    queryKey: ['/api/modules'],
+    queryKey: ['/modules'],
   });
 
   // Get a specific module by ID
