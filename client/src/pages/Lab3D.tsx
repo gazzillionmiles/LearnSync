@@ -1,264 +1,336 @@
 
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import Canvas3D from '@/components/Canvas3D';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Save, Share2, Sparkles, Target } from 'lucide-react';
-import type { Scene3D } from '@shared/types';
+import { useAuth } from '../contexts/AuthContext';
+import ThreeDCanvas from '../components/ThreeDCanvas';
+import { Button } from '../components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
+import { Textarea } from '../components/ui/textarea';
+import { Badge } from '../components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Sparkles, Trophy, Save, Share2 } from 'lucide-react';
 
-const DEFAULT_SCENE: Scene3D['sceneConfig'] = {
-  geometry: 'box',
-  color: '#3b82f6',
-  position: [0, 0, 0],
-  rotation: [0, 0, 0],
-  scale: [1, 1, 1],
+interface Challenge {
+  id: string;
+  title: string;
+  description: string;
+  difficulty: 'bronze' | 'silver' | 'gold';
+  category: string;
+  expectedPrompt: string;
+  sceneTemplate: any;
+  successCriteria: {
+    minScore: number;
+    requiredElements: string[];
+  };
+  hints: string[];
+  estimatedTime: number;
+}
+
+const defaultSceneConfig = {
+  objects: [
+    {
+      id: 'default-cube',
+      type: 'cube' as const,
+      position: [0, 0, 0] as [number, number, number],
+      rotation: [0, 0, 0] as [number, number, number],
+      scale: [1, 1, 1] as [number, number, number],
+      material: {
+        color: '#ff6b6b',
+        metalness: 0.3,
+        roughness: 0.4,
+      },
+    },
+  ],
   lighting: {
-    ambient: '#ffffff',
-    directional: '#ffffff',
-    intensity: 1,
+    ambient: { intensity: 0.4, color: '#ffffff' },
+    directional: { intensity: 1.0, color: '#ffffff', position: [5, 5, 5] as [number, number, number] },
   },
-  environment: 'studio',
-  animation: 'none',
+  environment: {
+    background: '#1a1a2e',
+  },
 };
-
-const TEMPLATES = [
-  {
-    name: 'Floating Cube',
-    prompt: 'A blue cube floating in space',
-    config: { ...DEFAULT_SCENE, animation: 'bounce' as const },
-  },
-  {
-    name: 'Golden Sphere',
-    prompt: 'A golden sphere with warm lighting',
-    config: { 
-      ...DEFAULT_SCENE, 
-      geometry: 'sphere' as const, 
-      color: '#fbbf24',
-      lighting: { ambient: '#fbbf24', directional: '#fff7ed', intensity: 1.2 }
-    },
-  },
-  {
-    name: 'Spinning Torus',
-    prompt: 'A purple torus spinning slowly',
-    config: { 
-      ...DEFAULT_SCENE, 
-      geometry: 'torus' as const, 
-      color: '#8b5cf6',
-      animation: 'rotate' as const 
-    },
-  },
-];
 
 export default function Lab3D() {
   const { user } = useAuth();
-  const [currentPrompt, setCurrentPrompt] = useState('');
-  const [sceneConfig, setSceneConfig] = useState<Scene3D['sceneConfig']>(DEFAULT_SCENE);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [scenes, setScenes] = useState<Scene3D[]>([]);
+  const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [selectedChallenge, setSelectedChallenge] = useState<Challenge | null>(null);
+  const [userPrompt, setUserPrompt] = useState('');
+  const [sceneConfig, setSceneConfig] = useState(defaultSceneConfig);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [feedback, setFeedback] = useState<any>(null);
+  const [savedScenes, setSavedScenes] = useState<any[]>([]);
 
-  const processPrompt = async () => {
-    if (!currentPrompt.trim()) return;
-    
-    setIsProcessing(true);
+  useEffect(() => {
+    fetchChallenges();
+    fetchSavedScenes();
+  }, []);
+
+  const fetchChallenges = async () => {
     try {
-      const response = await fetch('/api/lab3d/process-prompt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: currentPrompt }),
+      const response = await fetch('/api/3d/challenges', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
       });
       
       if (response.ok) {
-        const newConfig = await response.json();
-        setSceneConfig(newConfig);
+        const challengesData = await response.json();
+        setChallenges(challengesData);
+        if (challengesData.length > 0) {
+          setSelectedChallenge(challengesData[0]);
+        }
       }
     } catch (error) {
-      console.error('Error processing prompt:', error);
+      console.error('Error fetching challenges:', error);
+    }
+  };
+
+  const fetchSavedScenes = async () => {
+    try {
+      const response = await fetch('/api/3d/scenes', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+      
+      if (response.ok) {
+        const scenes = await response.json();
+        setSavedScenes(scenes);
+      }
+    } catch (error) {
+      console.error('Error fetching saved scenes:', error);
+    }
+  };
+
+  const generateScene = async () => {
+    if (!selectedChallenge || !userPrompt.trim()) return;
+
+    setIsGenerating(true);
+    try {
+      const response = await fetch('/api/3d/generate-scene', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({
+          prompt: userPrompt,
+          challengeId: selectedChallenge.id,
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setFeedback(result);
+        
+        // Update scene based on challenge template
+        const newSceneConfig = {
+          ...defaultSceneConfig,
+          objects: [
+            {
+              ...defaultSceneConfig.objects[0],
+              type: selectedChallenge.sceneTemplate.geometry || 'cube',
+              material: {
+                ...defaultSceneConfig.objects[0].material,
+                ...selectedChallenge.sceneTemplate.material,
+              },
+            },
+          ],
+          lighting: selectedChallenge.sceneTemplate.lighting || defaultSceneConfig.lighting,
+        };
+        
+        setSceneConfig(newSceneConfig);
+      }
+    } catch (error) {
+      console.error('Error generating scene:', error);
     } finally {
-      setIsProcessing(false);
+      setIsGenerating(false);
     }
   };
 
   const saveScene = async () => {
-    if (!user) return;
-    
+    if (!userPrompt.trim()) return;
+
     try {
-      const response = await fetch('/api/lab3d/scenes', {
+      const response = await fetch('/api/3d/save-scene', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
         body: JSON.stringify({
-          title: currentPrompt || 'Untitled Scene',
-          prompt: currentPrompt,
-          sceneConfig,
+          prompt: userPrompt,
+          sceneData: sceneConfig,
+          title: selectedChallenge?.title || 'My 3D Scene',
         }),
       });
-      
+
       if (response.ok) {
-        const newScene = await response.json();
-        setScenes([newScene, ...scenes]);
+        fetchSavedScenes();
+        console.log('Scene saved successfully!');
       }
     } catch (error) {
       console.error('Error saving scene:', error);
     }
   };
 
-  const loadTemplate = (template: typeof TEMPLATES[0]) => {
-    setCurrentPrompt(template.prompt);
-    setSceneConfig(template.config);
+  const getDifficultyColor = (difficulty: string) => {
+    switch (difficulty) {
+      case 'bronze': return 'bg-amber-100 text-amber-800';
+      case 'silver': return 'bg-gray-100 text-gray-800';
+      case 'gold': return 'bg-yellow-100 text-yellow-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="text-center space-y-2">
-        <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-          3D Prompt Lab
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          Transform your words into interactive 3D scenes
-        </p>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-violet-900 p-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-8 text-center">
+          <h1 className="text-4xl font-bold text-white mb-4 flex items-center justify-center gap-3">
+            <Sparkles className="w-8 h-8 text-purple-400" />
+            3D Prompt Lab
+            <Sparkles className="w-8 h-8 text-purple-400" />
+          </h1>
+          <p className="text-gray-300 text-lg">
+            Create stunning 3D scenes with natural language prompts
+          </p>
+        </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Panel - Controls */}
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5" />
-                Prompt Input
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Textarea
-                placeholder="Describe your 3D scene... (e.g., 'A red spinning cube with blue lighting')"
-                value={currentPrompt}
-                onChange={(e) => setCurrentPrompt(e.target.value)}
-                className="min-h-24"
-              />
-              <div className="flex gap-2">
-                <Button 
-                  onClick={processPrompt} 
-                  disabled={isProcessing || !currentPrompt.trim()}
-                  className="flex-1"
-                >
-                  {isProcessing ? 'Processing...' : 'Generate Scene'}
-                </Button>
-                <Button onClick={saveScene} variant="outline" size="icon">
-                  <Save className="w-4 h-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Templates</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 gap-2">
-                {TEMPLATES.map((template, index) => (
-                  <Button
-                    key={index}
-                    variant="outline"
-                    className="justify-start"
-                    onClick={() => loadTemplate(template)}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Challenge Selection */}
+          <div className="lg:col-span-1">
+            <Card className="bg-white/10 backdrop-blur-md border-white/20">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Trophy className="w-5 h-5" />
+                  Challenges
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {challenges.map((challenge) => (
+                  <div
+                    key={challenge.id}
+                    className={`p-3 rounded-lg cursor-pointer transition-all ${
+                      selectedChallenge?.id === challenge.id
+                        ? 'bg-purple-600/50 border border-purple-400'
+                        : 'bg-white/5 hover:bg-white/10'
+                    }`}
+                    onClick={() => setSelectedChallenge(challenge)}
                   >
-                    {template.name}
-                  </Button>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-white font-medium text-sm">{challenge.title}</h3>
+                      <Badge className={getDifficultyColor(challenge.difficulty)}>
+                        {challenge.difficulty}
+                      </Badge>
+                    </div>
+                    <p className="text-gray-300 text-xs">{challenge.description}</p>
+                    <div className="mt-2 text-xs text-gray-400">
+                      {challenge.estimatedTime} min • {challenge.category}
+                    </div>
+                  </div>
                 ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              </CardContent>
+            </Card>
+          </div>
 
-        {/* Right Panel - 3D Canvas */}
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>3D Preview</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Canvas3D sceneConfig={sceneConfig} />
-              <div className="mt-4 flex gap-2">
-                <Badge variant="secondary">{sceneConfig.geometry}</Badge>
-                <Badge variant="secondary">{sceneConfig.animation}</Badge>
-                <Badge variant="secondary">{sceneConfig.environment}</Badge>
-              </div>
-            </CardContent>
-          </Card>
+          {/* Main Canvas and Controls */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* 3D Canvas */}
+            <Card className="bg-white/10 backdrop-blur-md border-white/20">
+              <CardContent className="p-6">
+                <ThreeDCanvas 
+                  sceneConfig={sceneConfig}
+                  onSceneUpdate={setSceneConfig}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Prompt Input */}
+            <Card className="bg-white/10 backdrop-blur-md border-white/20">
+              <CardHeader>
+                <CardTitle className="text-white">
+                  {selectedChallenge ? `Challenge: ${selectedChallenge.title}` : 'Free Mode'}
+                </CardTitle>
+                {selectedChallenge && (
+                  <p className="text-gray-300 text-sm">{selectedChallenge.description}</p>
+                )}
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Textarea
+                  value={userPrompt}
+                  onChange={(e) => setUserPrompt(e.target.value)}
+                  placeholder="Describe your 3D scene... (e.g., 'Create a metallic sphere with blue lighting')"
+                  className="bg-white/10 border-white/20 text-white placeholder-gray-400 min-h-[100px]"
+                />
+                
+                <div className="flex gap-3">
+                  <Button
+                    onClick={generateScene}
+                    disabled={isGenerating || !userPrompt.trim()}
+                    className="flex-1 bg-purple-600 hover:bg-purple-700"
+                  >
+                    {isGenerating ? 'Generating...' : 'Generate Scene'}
+                  </Button>
+                  
+                  <Button
+                    onClick={saveScene}
+                    variant="outline"
+                    className="border-white/20 text-white hover:bg-white/10"
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    Save
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    className="border-white/20 text-white hover:bg-white/10"
+                  >
+                    <Share2 className="w-4 h-4 mr-2" />
+                    Share
+                  </Button>
+                </div>
+
+                {/* Feedback Display */}
+                {feedback && (
+                  <div className="mt-4 p-4 bg-black/20 rounded-lg">
+                    <h4 className="text-white font-medium mb-2">Evaluation Results</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="text-gray-300">
+                        Score: <span className="text-purple-400 font-medium">{feedback.score}/10</span>
+                      </div>
+                      <div className="text-gray-300">
+                        Semantic Similarity: <span className="text-purple-400 font-medium">{Math.round(feedback.semanticSimilarity * 100)}%</span>
+                      </div>
+                      {feedback.suggestions && feedback.suggestions.length > 0 && (
+                        <div>
+                          <div className="text-gray-300 mb-1">Suggestions:</div>
+                          <ul className="text-gray-400 text-xs space-y-1">
+                            {feedback.suggestions.map((suggestion: string, index: number) => (
+                              <li key={index}>• {suggestion}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Hints */}
+                {selectedChallenge && selectedChallenge.hints && (
+                  <div className="mt-4 p-3 bg-blue-900/20 rounded-lg">
+                    <h4 className="text-blue-300 font-medium text-sm mb-2">💡 Hints</h4>
+                    <ul className="text-blue-200 text-xs space-y-1">
+                      {selectedChallenge.hints.map((hint, index) => (
+                        <li key={index}>• {hint}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
-
-      <Tabs defaultValue="gallery" className="w-full">
-        <TabsList>
-          <TabsTrigger value="gallery">My Gallery</TabsTrigger>
-          <TabsTrigger value="missions">Missions</TabsTrigger>
-          <TabsTrigger value="leaderboard">Community</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="gallery">
-          <Card>
-            <CardHeader>
-              <CardTitle>Saved Scenes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {scenes.length === 0 ? (
-                  <p className="text-gray-500 col-span-full text-center py-8">
-                    No scenes saved yet. Create your first 3D scene!
-                  </p>
-                ) : (
-                  scenes.map((scene) => (
-                    <div key={scene.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
-                      <h4 className="font-medium truncate">{scene.title}</h4>
-                      <p className="text-sm text-gray-600 mt-1 truncate">{scene.prompt}</p>
-                      <div className="flex justify-between items-center mt-3">
-                        <Badge variant="outline">{scene.sceneConfig.geometry}</Badge>
-                        <Button size="sm" variant="ghost">
-                          <Share2 className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="missions">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Target className="w-5 h-5" />
-                Daily Missions
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-500 text-center py-8">
-                Missions coming soon! Practice challenges to earn badges.
-              </p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="leaderboard">
-          <Card>
-            <CardHeader>
-              <CardTitle>Community Gallery</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-500 text-center py-8">
-                Community features coming soon! Share and discover amazing 3D creations.
-              </p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
     </div>
   );
 }

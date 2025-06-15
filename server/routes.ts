@@ -223,6 +223,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 3D Lab Routes
+  app.get("/api/3d/challenges", authenticateToken, async (req: AuthRequest, res) => {
+    try {
+      if (!req.user) {
+        return res.status(403).json({ message: "Not authenticated" });
+      }
+      const challenges = await storage.getAllChallenges();
+      res.json(challenges);
+    } catch (error) {
+      console.error("Error fetching 3D challenges:", error);
+      res.status(500).json({ message: "Failed to fetch challenges" });
+    }
+  });
+
+  app.post("/api/3d/generate-scene", authenticateToken, async (req: AuthRequest, res) => {
+    try {
+      if (!req.user) {
+        return res.status(403).json({ message: "Not authenticated" });
+      }
+      
+      const { prompt, challengeId } = req.body;
+      const result = await storage.evaluatePrompt3D(prompt, challengeId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error generating 3D scene:", error);
+      res.status(500).json({ message: "Failed to generate scene" });
+    }
+  });
+
+  app.post("/api/3d/save-scene", authenticateToken, async (req: AuthRequest, res) => {
+    try {
+      if (!req.user) {
+        return res.status(403).json({ message: "Not authenticated" });
+      }
+      
+      const { prompt, sceneData, title } = req.body;
+      const sceneId = await storage.saveScene(req.user.id, prompt, { ...sceneData, title });
+      res.json({ sceneId, message: "Scene saved successfully" });
+    } catch (error) {
+      console.error("Error saving 3D scene:", error);
+      res.status(500).json({ message: "Failed to save scene" });
+    }
+  });
+
+  app.get("/api/3d/scenes", authenticateToken, async (req: AuthRequest, res) => {
+    try {
+      if (!req.user) {
+        return res.status(403).json({ message: "Not authenticated" });
+      }
+      
+      const scenes = await storage.getUserScenes(req.user.id);
+      res.json(scenes);
+    } catch (error) {
+      console.error("Error fetching user scenes:", error);
+      res.status(500).json({ message: "Failed to fetch scenes" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

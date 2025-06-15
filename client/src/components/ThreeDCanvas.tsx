@@ -1,188 +1,201 @@
 
 import React, { useRef, useState, useEffect } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Text, Stars } from '@react-three/drei';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { OrbitControls, Environment, PerspectiveCamera, Grid } from '@react-three/drei';
 import * as THREE from 'three';
-import type { ThreeDScene } from '@shared/types';
 
-interface ThreeDCanvasProps {
-  sceneData?: Partial<ThreeDScene['sceneData']>;
-  isInteractive?: boolean;
-  onSceneUpdate?: (sceneData: ThreeDScene['sceneData']) => void;
+interface SceneObject {
+  id: string;
+  type: 'sphere' | 'cube' | 'cylinder' | 'plane';
+  position: [number, number, number];
+  rotation: [number, number, number];
+  scale: [number, number, number];
+  material: {
+    color: string;
+    metalness: number;
+    roughness: number;
+    emissive?: string;
+  };
 }
 
-function AnimatedMesh({ 
-  geometry, 
-  material, 
-  animation 
-}: { 
-  geometry: string; 
-  material: any; 
-  animation?: any;
-}) {
+interface SceneConfig {
+  objects: SceneObject[];
+  lighting: {
+    ambient: { intensity: number; color: string };
+    directional: { intensity: number; color: string; position: [number, number, number] };
+  };
+  environment: {
+    background: string;
+    fog?: { color: string; density: number };
+  };
+  particles?: {
+    count: number;
+    size: number;
+    color: string;
+    speed: number;
+  };
+}
+
+interface ThreeDCanvasProps {
+  sceneConfig: SceneConfig;
+  onSceneUpdate?: (config: SceneConfig) => void;
+}
+
+function SceneObject({ object }: { object: SceneObject }) {
   const meshRef = useRef<THREE.Mesh>(null);
 
-  useFrame((state, delta) => {
-    if (!meshRef.current || !animation) return;
-    
-    switch (animation.type) {
-      case 'rotate':
-        meshRef.current.rotation.y += delta * animation.speed;
-        break;
-      case 'bounce':
-        meshRef.current.position.y = Math.sin(state.clock.elapsedTime * animation.speed) * 0.5;
-        break;
-      case 'float':
-        meshRef.current.position.y = Math.sin(state.clock.elapsedTime * animation.speed) * 0.2;
-        meshRef.current.rotation.x = Math.sin(state.clock.elapsedTime * animation.speed * 0.5) * 0.1;
-        break;
-    }
-  });
-
-  const renderGeometry = () => {
-    switch (geometry) {
-      case 'cube':
-        return <boxGeometry args={[1, 1, 1]} />;
+  const geometry = React.useMemo(() => {
+    switch (object.type) {
       case 'sphere':
-        return <sphereGeometry args={[0.8, 32, 32]} />;
-      case 'plane':
-        return <planeGeometry args={[5, 5]} />;
+        return new THREE.SphereGeometry(1, 32, 32);
+      case 'cube':
+        return new THREE.BoxGeometry(1, 1, 1);
       case 'cylinder':
-        return <cylinderGeometry args={[0.5, 0.5, 1, 32]} />;
+        return new THREE.CylinderGeometry(1, 1, 2, 32);
+      case 'plane':
+        return new THREE.PlaneGeometry(2, 2);
       default:
-        return <boxGeometry args={[1, 1, 1]} />;
+        return new THREE.BoxGeometry(1, 1, 1);
     }
-  };
+  }, [object.type]);
 
   return (
-    <mesh ref={meshRef}>
-      {renderGeometry()}
-      <meshStandardMaterial 
-        color={material.color || '#ffffff'}
-        metalness={material.metalness || 0}
-        roughness={material.roughness || 0.5}
+    <mesh
+      ref={meshRef}
+      position={object.position}
+      rotation={object.rotation}
+      scale={object.scale}
+      geometry={geometry}
+    >
+      <meshStandardMaterial
+        color={object.material.color}
+        metalness={object.material.metalness}
+        roughness={object.material.roughness}
+        emissive={object.material.emissive || '#000000'}
       />
     </mesh>
   );
 }
 
-function ParticleSystem({ particles }: { particles?: any }) {
-  const particlesRef = useRef<THREE.Points>(null);
+function ParticleSystem({ particles }: { particles: SceneConfig['particles'] }) {
+  const pointsRef = useRef<THREE.Points>(null);
+  const positionsRef = useRef<Float32Array>();
+
   const particleCount = particles?.count || 100;
-  
+
   const positions = React.useMemo(() => {
-    const positions = new Float32Array(particleCount * 3);
+    const pos = new Float32Array(particleCount * 3);
     for (let i = 0; i < particleCount; i++) {
-      positions[i * 3] = (Math.random() - 0.5) * 10;
-      positions[i * 3 + 1] = (Math.random() - 0.5) * 10;
-      positions[i * 3 + 2] = (Math.random() - 0.5) * 10;
+      pos[i * 3] = (Math.random() - 0.5) * 20;
+      pos[i * 3 + 1] = (Math.random() - 0.5) * 20;
+      pos[i * 3 + 2] = (Math.random() - 0.5) * 20;
     }
-    return positions;
+    positionsRef.current = pos;
+    return pos;
   }, [particleCount]);
 
-  useFrame(() => {
-    if (!particlesRef.current) return;
-    particlesRef.current.rotation.y += 0.001;
+  useFrame((state) => {
+    if (pointsRef.current && positionsRef.current) {
+      const time = state.clock.getElapsedTime();
+      const speed = particles?.speed || 0.5;
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        positionsRef.current[i3] += Math.sin(time * speed + i) * 0.01;
+        positionsRef.current[i3 + 1] += Math.cos(time * speed + i) * 0.01;
+      }
+      
+      pointsRef.current.geometry.attributes.position.needsUpdate = true;
+    }
   });
 
   if (!particles) return null;
 
   return (
-    <points ref={particlesRef}>
+    <points ref={pointsRef}>
       <bufferGeometry>
         <bufferAttribute
           attach="attributes-position"
-          count={particleCount}
           array={positions}
+          count={particleCount}
           itemSize={3}
         />
       </bufferGeometry>
-      <pointsMaterial 
-        color={particles.color || '#ffffff'} 
-        size={0.05}
-        sizeAttenuation
+      <pointsMaterial
+        color={particles.color}
+        size={particles.size}
+        sizeAttenuation={true}
       />
     </points>
   );
 }
 
-function SceneLighting({ lighting }: { lighting?: any }) {
-  const defaultLighting = {
-    ambient: { intensity: 0.5, color: '#ffffff' },
-    directional: { intensity: 1, color: '#ffffff', position: [5, 5, 5] }
-  };
-  
-  const lights = lighting || defaultLighting;
-  
+function SceneLighting({ lighting }: { lighting: SceneConfig['lighting'] }) {
   return (
     <>
       <ambientLight 
-        intensity={lights.ambient.intensity} 
-        color={lights.ambient.color} 
+        intensity={lighting.ambient.intensity} 
+        color={lighting.ambient.color} 
       />
       <directionalLight
-        intensity={lights.directional.intensity}
-        color={lights.directional.color}
-        position={lights.directional.position}
+        intensity={lighting.directional.intensity}
+        color={lighting.directional.color}
+        position={lighting.directional.position}
         castShadow
       />
     </>
   );
 }
 
-export default function ThreeDCanvas({ 
-  sceneData, 
-  isInteractive = true,
-  onSceneUpdate 
-}: ThreeDCanvasProps) {
-  const [currentScene, setCurrentScene] = useState(sceneData);
+export default function ThreeDCanvas({ sceneConfig, onSceneUpdate }: ThreeDCanvasProps) {
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    setCurrentScene(sceneData);
-  }, [sceneData]);
-
-  const defaultScene = {
-    geometry: 'cube',
-    material: { color: '#4f46e5', metalness: 0.2, roughness: 0.3 },
-    lighting: {
-      ambient: { intensity: 0.3, color: '#ffffff' },
-      directional: { intensity: 1, color: '#ffffff', position: [5, 5, 5] }
-    },
-    camera: { position: [0, 0, 5], rotation: [0, 0, 0] },
-  };
-
-  const scene = currentScene || defaultScene;
+    setIsLoading(false);
+  }, [sceneConfig]);
 
   return (
-    <div className="w-full h-96 bg-gray-900 rounded-lg overflow-hidden">
+    <div className="w-full h-96 bg-gray-900 rounded-lg overflow-hidden relative">
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-800 z-10">
+          <div className="text-white">Loading 3D Scene...</div>
+        </div>
+      )}
+      
       <Canvas
-        camera={{ 
-          position: scene.camera?.position || [0, 0, 5],
-          fov: 75
-        }}
         shadows
+        style={{ background: sceneConfig.environment.background }}
+        camera={{ position: [5, 5, 5], fov: 75 }}
       >
-        <SceneLighting lighting={scene.lighting} />
+        <PerspectiveCamera makeDefault position={[5, 5, 5]} />
         
-        <AnimatedMesh 
-          geometry={scene.geometry || 'cube'}
-          material={scene.material || defaultScene.material}
-          animation={scene.animation}
-        />
+        <SceneLighting lighting={sceneConfig.lighting} />
         
-        <ParticleSystem particles={scene.particles} />
+        {sceneConfig.objects.map((object) => (
+          <SceneObject key={object.id} object={object} />
+        ))}
         
-        <Stars 
-          radius={100} 
-          depth={50} 
-          count={1000} 
-          factor={4} 
-          saturation={0} 
-          fade 
-        />
+        <ParticleSystem particles={sceneConfig.particles} />
         
-        {isInteractive && <OrbitControls enablePan={true} enableZoom={true} enableRotate={true} />}
+        {sceneConfig.environment.fog && (
+          <fog
+            attach="fog"
+            args={[
+              sceneConfig.environment.fog.color,
+              10,
+              200
+            ]}
+          />
+        )}
+        
+        <Grid args={[20, 20]} />
+        <Environment preset="sunset" />
+        <OrbitControls enablePan={true} enableZoom={true} enableRotate={true} />
       </Canvas>
+      
+      <div className="absolute bottom-4 left-4 text-white text-sm bg-black bg-opacity-50 px-2 py-1 rounded">
+        Use mouse to orbit, zoom, and pan
+      </div>
     </div>
   );
 }

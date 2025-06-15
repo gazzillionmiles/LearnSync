@@ -16,6 +16,8 @@ const pool = new Pool({
 
 const db = drizzle(pool);
 
+export { db };
+
 export class ThreeDStorage {
   async saveScene(userId: number, prompt: string, sceneData: ThreeDScene): Promise<string> {
     // Save 3D scene with generated ID
@@ -54,8 +56,14 @@ export class ThreeDStorage {
   }
 
   async getChallengeById(challengeId: string): Promise<any> {
-    // Get handcrafted challenge by ID
-    return null; // Will be implemented
+    // Import challenges from data file
+    const { challenges } = await import("./data/challenges");
+    return challenges.find(c => c.id === challengeId) || null;
+  }
+
+  async getAllChallenges(): Promise<any[]> {
+    const { challenges } = await import("./data/challenges");
+    return challenges;
   }
 
   async getUserProgress(userId: number): Promise<UserProgress> {

@@ -4,13 +4,15 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "next-themes";
 import { ProgressProvider } from "./contexts/ProgressContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
-import NotFound from "@/pages/not-found";
-import Dashboard from "@/pages/Dashboard";
-import ModulePage from "@/pages/ModulePage";
-import Leaderboard from './pages/Leaderboard';
-import Lab3D from './pages/Lab3D';
-import Login from "@/pages/Login";
-import Register from "@/pages/Register";
+import Dashboard from "./pages/Dashboard";
+import ModulePage from "./pages/ModulePage";
+import Lab3D from "./pages/Lab3D";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import Leaderboard from "./pages/Leaderboard";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
+import NotFound from "./pages/not-found";
 import Sidebar from "@/components/Sidebar";
 import { useState } from "react";
 import ForgotPassword from "@/pages/ForgotPassword";
@@ -60,8 +62,10 @@ function Router() {
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/modules/:moduleId" component={ModulePage} />
+          <Route path="/lab3d" component={Lab3D} />
           <Route path="/leaderboard" component={Leaderboard} />
-            <Route path="/lab3d" component={Lab3D} />
+          <Route path="/forgot-password" component={ForgotPassword} />
+          <Route path="/reset-password" component={ResetPassword} />
           <Route component={NotFound} />
         </Switch>
       </main>
